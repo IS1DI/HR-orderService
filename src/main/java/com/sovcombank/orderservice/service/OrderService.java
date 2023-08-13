@@ -1,5 +1,6 @@
 package com.sovcombank.orderservice.service;
 
+import com.sovcombank.orderservice.client.UserServiceClient;
 import com.sovcombank.orderservice.entity.Order;
 import com.sovcombank.orderservice.entity.Status;
 import com.sovcombank.orderservice.repository.OrderRepository;
@@ -8,9 +9,11 @@ import com.sovcombank.orderservice.utils.MessageMethod;
 import com.sovcombank.orderservice.utils.OrderUtils;
 import com.sovcombank.orderservice.utils.UserUtils;
 import jakarta.persistence.EntityNotFoundException;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
@@ -21,15 +24,17 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-
+@Slf4j
 @Service
 public class OrderService {
-    private final Logger log = LoggerFactory.getLogger(OrderService.class);
     @Autowired
     MessageService messageService;
     @Autowired
     OrderRepository orderRepository;
-
+    @Autowired
+    UserServiceClient userServiceClient;
+    @Autowired
+    StreamBridge streamBridge;
 
     public Order getOrderById(String orderId, Principal principal, Locale locale) {
         String userId = UserUtils.getUserId(principal);
@@ -50,10 +55,13 @@ public class OrderService {
             throw new AccessDeniedException(messageService.accessErrorMessage(locale));
     }
 
-    public String create(Order order, String userId, Locale locale) {//TODO kafka and redis and circuit breaker
+    public String create(Order order,int countHRBPs, boolean auto, String userId, Locale locale) { //TODO kafka and redis and circuit breaker
         order.setOwnerId(userId);
         order.setCreatedAt(Instant.now());
+        if(auto)
+            order.setHrbps(userServiceClient.getOptimalHRBPs(countHRBPs));
         orderRepository.save(order);
+        streamBridge.send("orders",order); //TODO
         log.info("order {} created by user {}", order.getId(), userId);
         return messageService.orderMessage(MessageMethod.CREATE, new Object[]{order.getId()}, locale);
     }

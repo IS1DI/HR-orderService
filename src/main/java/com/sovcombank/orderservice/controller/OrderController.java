@@ -40,9 +40,12 @@ public class OrderController {
     @PostMapping("/")
     @PreAuthorize("hasRole('CUSTOMER')")
     //TODO roles
-    ResponseEntity<String> createOrder(@RequestBody Order order, Principal principal,
+    ResponseEntity<String> createOrder(@RequestBody Order order,
+                                       @RequestParam(value = "count",required = false,defaultValue = "1") int countHRBPs,
+                                       @RequestParam(value = "auto",required = false,defaultValue = "true") boolean auto,
+                                       Principal principal,
                                        @RequestHeader(value = "Accept-Language", required = false) Locale locale){
-        return ok(orderService.create(order, UserUtils.getUserId(principal),locale));
+        return ok(orderService.create(order,countHRBPs,auto, UserUtils.getUserId(principal),locale));
     }
 
     /**
