@@ -16,8 +16,5 @@ public class MessageService {
     public String getMessage(MessageMethod method, Object[] args, Locale locale){
         return messages.getMessage(method.getVal(), args,locale);
     }
-    public String accessErrorMessage(Locale locale){
-        return messages.getMessage(MessageMethod.ACCESS_ERROR.getVal(),null,locale);
-    }
 
 }
