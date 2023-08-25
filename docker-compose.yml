@@ -1,0 +1,148 @@
+version: '3.9'
+
+
+services:
+  database:
+    image: postgres:latest
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "postgres"
+      POSTGRES_MULTIPLE_DATABASES: keycloak,orderservice
+    networks:
+      backend:
+        aliases:
+          - "database"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  eurekaserver:
+    image: is1di/eurekaserver:0.0.2
+    ports:
+      - "8076:8076"
+    depends_on:
+      configserver:
+        condition: service_healthy
+    networks:
+      backend:
+        aliases:
+          - "eurekaserver"
+
+  orderservice:
+    build:
+      dockerfile: Dockerfile
+    ports:
+      - "8120:8120"
+    container_name: orderService
+    depends_on:
+      kafka:
+        condition: service_started
+      configserver:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    networks:
+      - backend
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    environment:
+      DB_VENDOR: POSTGRES
+      DB_ADDR: database
+      DB_DATABASE: keycloak
+      DB_USER: postgres
+      DB_SCHEMA: public
+      DB_PASSWORD: postgres
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      # Uncomment the line below if you want to specify JDBC parameters. The parameter below is just an example, and it shouldn't be used in production without knowledge. It is highly recommended that you read the PostgreSQL JDBC driver documentation in order to use it.
+      #JDBC_PARAMS: "ssl=true"
+    volumes:
+      - ./realm.json:/opt/keycloak/data/import/realm.json
+    command:
+      start-dev 
+      --import-realm
+    ports:
+      - "8080:8080"
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      backend:
+        aliases:
+          - "keycloak"
+
+  configserver:
+    image: cherdak163/configserver
+    ports:
+      - "8071:8071"
+    healthcheck:
+      test: "curl --fail --silent localhost:8071/actuator/health/readiness | grep UP || exit 1"
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    networks:
+      backend:
+        aliases:
+          - "configserver"
+  zookeeper:
+    platform: linux/x86_64
+    image: confluentinc/cp-zookeeper:6.2.4
+    container_name: zookeeper
+    ports:
+      - 2181:2181
+    environment:
+      TZ: Europe/Prague
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    platform: linux/x86_64
+    image: confluentinc/cp-enterprise-kafka
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      # Exposes 9092 for external connections to the broker
+      # Use kafka:29092 for connections internal on the docker network
+      # See https://rmoff.net/2018/08/02/kafka-listeners-explained/ for details
+      - '9092:9092'
+    environment:
+      TZ: Europe/Prague
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 100
+      CONFLUENT_METRICS_ENABLE: 'false'
+
+
+  akhq:
+    platform: linux/x86_64
+    image: tchiotludo/akhq
+    ports:
+      - "8085:8085"
+    environment:
+      AKHQ_CONFIGURATION: |
+        akhq:
+          connections:
+            docker-kafka-server:
+              properties:
+                bootstrap.servers: "kafka:29092"
+              schema-registry:
+                url: "http://schema-registry:8081"
+              connect:
+                - name: "connect"
+                  url: "http://kafka-connect:8083"
+networks:
+  backend:
+    driver: bridge

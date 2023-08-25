@@ -10,9 +10,9 @@
     </parent>
     <groupId>com.Sovcombank</groupId>
     <artifactId>orderService</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.0.1</version>
     <name>orderService</name>
-    <description>resumeService</description>
+    <description>orderService</description>
     <properties>
         <java.version>17</java.version>
         <spring-cloud.version>2022.0.2</spring-cloud.version>
